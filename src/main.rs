@@ -431,8 +431,52 @@ fn add_exe_dir_to_path() {
     }
 }
 
+fn log_file() -> std::path::PathBuf {
+    directories::ProjectDirs::from("com", "SyanCode", "CharlieKirkPomodoro")
+        .map(|d| d.data_local_dir().to_path_buf())
+        .unwrap_or_else(std::env::temp_dir)
+        .join("log.txt")
+}
+
+/// Écrit dans `log.txt` (l'appli n'a pas de console sous Windows).
+fn log(msg: &str) {
+    let path = log_file();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(&path, format!("{msg}\n"));
+}
+
+/// Affiche l'erreur à l'utilisateur (Windows : boîte de dialogue ; ailleurs : stderr).
+fn show_fatal(msg: &str) {
+    eprintln!("{msg}");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let text = format!("{msg}\n\nDétails : {}", log_file().display()).replace('\'', " ");
+        let _ = std::process::Command::new("powershell")
+            .creation_flags(0x0800_0000)
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!(
+                    "Add-Type -AssemblyName PresentationFramework; \
+                     [System.Windows.MessageBox]::Show('{text}', 'CharlieKirkPomodoro')"
+                ),
+            ])
+            .status();
+    }
+}
+
 fn main() -> eframe::Result {
     add_exe_dir_to_path();
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("Plantage : {info}\n{}", std::backtrace::Backtrace::force_capture());
+        log(&msg);
+        show_fatal(&format!("CharlieKirkPomodoro a planté : {info}"));
+    }));
+    log("démarrage");
+
     #[cfg(target_os = "macos")]
     nokhwa::nokhwa_initialize(|_| {});
 
@@ -443,5 +487,10 @@ fn main() -> eframe::Result {
             .with_min_inner_size([380.0, 600.0]),
         ..Default::default()
     };
-    eframe::run_native("CharlieKirkPomodoro", options, Box::new(|_cc| Ok(Box::new(App::new()))))
+    let result = eframe::run_native("CharlieKirkPomodoro", options, Box::new(|_cc| Ok(Box::new(App::new()))));
+    if let Err(e) = &result {
+        log(&format!("Erreur au démarrage de la fenêtre : {e}"));
+        show_fatal(&format!("Impossible d'ouvrir la fenêtre : {e}"));
+    }
+    result
 }
