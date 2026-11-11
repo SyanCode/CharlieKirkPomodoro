@@ -414,7 +414,22 @@ impl eframe::App for App {
     }
 }
 
+/// Place le dossier de l'exécutable en tête du PATH : l'installateur y dépose yt-dlp et ffmpeg.
+fn add_exe_dir_to_path() {
+    let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) else {
+        return;
+    };
+    let mut paths = vec![dir];
+    if let Some(existing) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&existing));
+    }
+    if let Ok(joined) = std::env::join_paths(paths) {
+        std::env::set_var("PATH", joined);
+    }
+}
+
 fn main() -> eframe::Result {
+    add_exe_dir_to_path();
     #[cfg(target_os = "macos")]
     nokhwa::nokhwa_initialize(|_| {});
 

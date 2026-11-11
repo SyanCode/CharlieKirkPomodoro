@@ -69,3 +69,5 @@ Thumbs.db
 node_modules/
 dist/
 /target/
+installer/Output/
+installer/tools/

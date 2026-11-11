@@ -11,7 +11,16 @@ binaire : aucune image de la caméra ne quitte ta machine, pas besoin de connexi
 Le détecteur ne reconnaît que les visages de face : tourner la tête, la baisser ou
 sortir du cadre compte comme « détourner le regard ». Le suivi des yeux seuls n'est pas géré.
 
-## Compiler / lancer
+## Installer (Windows)
+
+Télécharge **CharlieKirkPomodoro-Setup.exe** dans la page
+[Releases](https://github.com/SyanCode/CharlieKirkPomodoro/releases/latest), lance-le et
+suis l'assistant. Il installe l'appli avec yt-dlp et ffmpeg (rien d'autre à installer) ; autorise la
+caméra si Windows le demande. Windows SmartScreen peut afficher un avertissement car
+l'installateur n'est pas signé : « Informations complémentaires » puis « Exécuter quand même ».
+
+## Compiler soi-même / autres systèmes
+
 
 Il faut [Rust](https://rustup.rs) (stable). Sous Linux, installe aussi les en-têtes ALSA
 (`libasound2-dev` sur Debian/Ubuntu).
