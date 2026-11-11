@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio;
+mod defaults;
 mod guard;
 mod memes;
 mod timer;
@@ -42,6 +43,10 @@ struct App {
     next_clip_id: u64,
     background: Option<rodio::Player>,
     was_flooding: bool,
+    /// Ce flood-ci utilise les vidéos (sinon : musique de fond si disponible).
+    video_mode: bool,
+    first_run_checked: bool,
+    defaults: defaults::SharedProgress,
     pomodoro: Pomodoro,
     guard: AwayGuard,
     vision: Option<Vision>,
@@ -63,6 +68,9 @@ impl App {
             next_clip_id: 0,
             background: None,
             was_flooding: false,
+            video_mode: true,
+            first_run_checked: false,
+            defaults: Default::default(),
             pomodoro: Pomodoro::new(25, 5),
             guard: AwayGuard::default(),
             vision: None,
@@ -89,10 +97,25 @@ impl App {
         self.was_flooding = false;
     }
 
+    /// Choisit le mode du flood : vidéos (avec leur son) ou musique de fond.
+    /// S'il y a les deux, on alterne au hasard pour ne pas superposer deux sons.
     fn start_flood_audio(&mut self) {
-        if let (Some(audio), Some(path)) = (&self.audio, self.memes.background_audio()) {
-            self.background = audio.play_loop(&path);
+        let videos = self.ffmpeg && !self.memes.videos.is_empty();
+        let music = self.audio.is_some() && !self.memes.audios.is_empty();
+        self.video_mode = match (videos, music) {
+            (true, true) => rand::rng().random_bool(0.5),
+            (true, false) => true,
+            (false, _) => false,
+        };
+        if !self.video_mode {
+            if let (Some(audio), Some(path)) = (&self.audio, self.memes.background_audio()) {
+                self.background = audio.play_loop(&path);
+            }
         }
+    }
+
+    fn install_defaults(&mut self, ctx: &egui::Context) {
+        defaults::install(self.memes.dir.clone(), ctx.clone(), self.defaults.clone());
     }
 
     /// Renvoie l'id d'une vidéo en cours de lecture (en démarre une nouvelle si besoin).
@@ -116,7 +139,7 @@ impl App {
     fn spawn_meme(&mut self, ctx: &egui::Context, screen: Vec2) {
         let mut rng = rand::rng();
         let mut rng_video = rand::rng();
-        let video = if !self.memes.videos.is_empty() && rng_video.random_bool(0.5) {
+        let video = if self.video_mode && !self.memes.videos.is_empty() && rng_video.random_bool(0.5) {
             self.pick_clip(ctx)
         } else {
             None
@@ -149,6 +172,10 @@ impl App {
 
     /// Mise à jour de l'état (timer, caméra, flood), sans dessin.
     fn tick(&mut self, ctx: &egui::Context) {
+        let changed = std::mem::take(&mut self.defaults.lock().unwrap().changed);
+        if changed {
+            self.memes.reload();
+        }
         let now = Instant::now();
         let dt = now - self.last_tick;
         self.last_tick = now;
@@ -271,6 +298,12 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if !self.first_run_checked {
+            self.first_run_checked = true;
+            if !defaults::already_installed(&self.memes.dir) {
+                self.install_defaults(&ctx);
+            }
+        }
         let bg = match self.pomodoro.phase {
             Phase::Work => Color32::from_rgb(179, 38, 30),
             Phase::Break => Color32::from_rgb(30, 122, 70),
@@ -346,6 +379,17 @@ impl eframe::App for App {
                         ui.label(RichText::new("Aucune sortie audio détectée.").color(Color32::YELLOW));
                     }
                     ui.add_space(12.0);
+                    {
+                        let p = self.defaults.lock().unwrap();
+                        let (running, msg) = (p.running, p.message.clone());
+                        drop(p);
+                        if !msg.is_empty() {
+                            ui.label(RichText::new(msg).small().color(Color32::from_white_alpha(220)));
+                        }
+                        if !running && ui.button("Télécharger les assets par défaut").clicked() {
+                            self.install_defaults(&ctx);
+                        }
+                    }
                     if ui.button("Ouvrir le dossier des memes").clicked() {
                         self.memes.open_dir();
                     }

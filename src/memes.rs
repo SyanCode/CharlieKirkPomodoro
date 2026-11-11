@@ -71,13 +71,14 @@ impl Memes {
         self.videos.choose(&mut rand::rng()).cloned()
     }
 
-    /// Musique de fond : uniquement s'il n'y a aucune vidéo (le son vient alors des vidéos).
+    /// Musique de fond choisie au hasard.
     pub fn background_audio(&self) -> Option<PathBuf> {
-        if self.videos.is_empty() {
-            self.audios.choose(&mut rand::rng()).cloned()
-        } else {
-            None
-        }
+        self.audios.choose(&mut rand::rng()).cloned()
+    }
+
+    /// Recharge le dossier (nouveaux fichiers ajoutés / téléchargés).
+    pub fn reload(&mut self) {
+        *self = Self::load();
     }
 
     /// Choisit une image au hasard (décodée à la demande, puis en cache), sinon une carte texte.

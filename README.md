@@ -26,19 +26,32 @@ Copie-le où tu veux : c'est tout ce qu'il faut. Le workflow GitHub Actions
 
 Sous macOS, autorise l'accès caméra au premier lancement.
 
+## Assets par défaut
+
+Au premier lancement, l'appli télécharge sur ta machine (rien n'est dans le dépôt) des assets
+par défaut dans le dossier des memes : 5 images, 3 vidéos (phonk, funk, phonk slowed + reverb) et
+une piste audio (à partir de 0:42). La liste est dans `src/defaults.rs`. Le bouton
+**Télécharger les assets par défaut** relance le téléchargement (les fichiers déjà présents
+sont conservés). Les images n'ont besoin de rien ; les vidéos et l'audio nécessitent
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) et [ffmpeg](https://ffmpeg.org/download.html) dans le PATH.
+Tu peux supprimer, remplacer ou ajouter des fichiers librement.
+
 ## Memes, vidéos et son
 
-Clique sur **Ouvrir le dossier des memes** et dépose-y tes fichiers, puis relance l'appli :
+Clique sur **Ouvrir le dossier des memes** et dépose-y tes fichiers (rechargés au prochain
+téléchargement ou au prochain lancement) :
 
 | Type | Formats | Comportement |
 |---|---|---|
 | Images | png, jpg, gif, webp (GIF = image fixe) | affichées en flood |
-| Vidéos | mp4, webm, mov, mkv, avi | lues **avec leur son**, en boucle (3 vidéos simultanées max, dupliquées à l'écran) |
-| Audio de fond | mp3, wav, ogg, flac | joué en boucle pendant le flood, **seulement s'il n'y a aucune vidéo** |
+| Vidéos | mp4, webm, mov, mkv, avi | lues **avec leur son**, en boucle (3 vidéos simultanées max) |
+| Audio de fond | mp3, wav, ogg, flac | joué en boucle pendant le flood |
 
-Les vidéos nécessitent [ffmpeg](https://ffmpeg.org/download.html) (`ffmpeg` et `ffprobe` dans le
-PATH) ; sans lui elles sont ignorées et l'appli l'indique. Sans aucun fichier, des cartes
-texte générées sont utilisées.
+À chaque flood, s'il y a à la fois des vidéos et de l'audio, l'appli tire au sort : soit les
+vidéos (avec leur son), soit la musique de fond, pour ne jamais superposer les deux.
+S'il n'y a que des images et un fichier audio, la musique joue toujours. Les vidéos
+nécessitent `ffmpeg` (et `ffprobe`) pour la lecture. Sans aucun fichier, des cartes texte
+générées sont utilisées.
 
 ## Réglages
 
