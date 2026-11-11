@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+    paths: ["src/**", "assets/**", "Cargo.toml", "Cargo.lock", "installer/**", ".github/workflows/release.yml"]
   workflow_dispatch:
     inputs:
       tag:
@@ -38,7 +40,7 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
-          $version = "${{ inputs.tag || github.ref_name }}".TrimStart("v")
+          $version = "${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || 'v1.0.0' }}".TrimStart("v")
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer/installer.iss
           Get-ChildItem installer/Output
 
@@ -50,7 +52,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
+          tag_name: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || 'v1.0.0' }}
           target_commitish: ${{ github.sha }}
           files: installer/Output/CharlieKirkPomodoro-Setup.exe
           generate_release_notes: true
