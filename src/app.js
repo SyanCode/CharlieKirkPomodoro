@@ -1,9 +1,9 @@
 import {
   FaceLandmarker, FilesetResolver,
-} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+} from "../vendor/mediapipe/vision_bundle.mjs";
 
-const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
-const MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+const WASM = new URL("../vendor/mediapipe/wasm", import.meta.url).href;
+const MODEL = new URL("../vendor/mediapipe/face_landmarker.task", import.meta.url).href;
 
 // Seuils de détournement du regard / de la tête
 const MAX_YAW = 0.22;        // 0 = face, ±1 = profil
@@ -16,7 +16,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   timer: $("timer"), phase: $("phase"), start: $("startBtn"), reset: $("resetBtn"),
   work: $("workMin"), brk: $("breakMin"), video: $("video"), status: $("status"),
-  flood: $("flood"), files: $("memeFiles"),
+  flood: $("flood"),
 };
 
 /* ---------------- Pomodoro ---------------- */
@@ -98,20 +98,15 @@ function cardDataUrl(text, hue) {
 }
 
 async function loadMemes() {
-  try {
-    const list = await (await fetch("memes/memes.json")).json();
-    memes = list.map((f) => ({ src: `memes/${f}`, video: /\.(mp4|webm)$/i.test(f) }));
-  } catch {}
+  const files = await window.pomodoro.listMemes();
+  memes = files.map((src) => ({ src, video: /\.(mp4|webm)$/i.test(src) }));
   if (!memes.length) {
     const lines = ["CHARLIE KIRK\nTE REGARDE", "REVIENS\nTRAVAILLER", "REGARDE\nL'ÉCRAN !", "TON POMODORO\nTE CHERCHE"];
     memes = lines.map((t, i) => ({ src: cardDataUrl(t, i * 70 + 10), video: false }));
   }
 }
 
-els.files.onchange = () => {
-  const added = [...els.files.files].map((f) => ({ src: URL.createObjectURL(f), video: f.type.startsWith("video/") }));
-  if (added.length) memes = added;
-};
+$("memesBtn").onclick = () => window.pomodoro.openMemesDir();
 
 let floodTimer = null;
 function spawnMeme() {
