@@ -420,6 +420,9 @@ fn add_exe_dir_to_path() {
         return;
     };
     let mut paths = vec![dir];
+    // Une appli lancée depuis le Finder n'hérite pas du PATH du terminal : ajoute Homebrew.
+    #[cfg(target_os = "macos")]
+    paths.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(std::path::PathBuf::from));
     if let Some(existing) = std::env::var_os("PATH") {
         paths.extend(std::env::split_paths(&existing));
     }

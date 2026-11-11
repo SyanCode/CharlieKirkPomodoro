@@ -19,3 +19,15 @@ rodio = { version = "0.23", default-features = false, features = ["playback", "m
 [profile.release]
 opt-level = 3
 lto = true
+
+[package.metadata.deb]
+maintainer = "SyanCode"
+section = "utils"
+priority = "optional"
+depends = "$auto, ffmpeg, libxkbcommon-x11-0, libgl1"
+recommends = "yt-dlp"
+extended-description = "Pomodoro avec détection du regard par webcam : des memes inondent l'écran quand tu détournes la tête."
+assets = [
+    ["target/release/charliekirkpomodoro", "usr/bin/", "755"],
+    ["installer/charliekirkpomodoro.desktop", "usr/share/applications/", "644"],
+]

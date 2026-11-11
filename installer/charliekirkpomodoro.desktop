@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=CharlieKirkPomodoro
+Comment=Pomodoro qui flood l'écran de memes quand tu détournes le regard
+Exec=charliekirkpomodoro
+Terminal=false
+Categories=Utility;

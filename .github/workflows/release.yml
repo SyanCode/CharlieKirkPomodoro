@@ -15,16 +15,17 @@ on:
 permissions:
   contents: write
 
+env:
+  TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || 'v1.0.0' }}
+
 jobs:
-  windows-installer:
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-
-      - name: Build
-        run: cargo build --release
+      - run: cargo build --release
 
       - name: Download yt-dlp and ffmpeg (bundled in the installer)
         shell: pwsh
@@ -34,25 +35,95 @@ jobs:
           Invoke-WebRequest https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip -OutFile ffmpeg.zip
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg
           Copy-Item ffmpeg/*/bin/ffmpeg.exe, ffmpeg/*/bin/ffprobe.exe installer/tools/
-          Get-ChildItem installer/tools
 
       - name: Build installer
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
-          $version = "${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || 'v1.0.0' }}".TrimStart("v")
+          $version = $env:TAG.TrimStart("v")
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer/installer.iss
-          Get-ChildItem installer/Output
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CharlieKirkPomodoro-Setup
+          name: windows
           path: installer/Output/CharlieKirkPomodoro-Setup.exe
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - uses: taiki-e/install-action@v2
         with:
-          tag_name: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || 'v1.0.0' }}
+          tool: cargo-deb
+      - name: Build .deb
+        run: |
+          cargo deb
+          cp target/debian/*.deb CharlieKirkPomodoro-linux-amd64.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: CharlieKirkPomodoro-linux-amd64.deb
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+
+      - name: Build .app and .dmg
+        run: |
+          APP="dist/CharlieKirkPomodoro.app"
+          mkdir -p "$APP/Contents/MacOS"
+          cp target/release/charliekirkpomodoro "$APP/Contents/MacOS/"
+          # yt-dlp embarqué à côté de l'exécutable (ffmpeg : brew install ffmpeg)
+          curl -fsSL -o "$APP/Contents/MacOS/yt-dlp" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
+          chmod +x "$APP/Contents/MacOS/yt-dlp"
+          VERSION="${TAG#v}"
+          cat > "$APP/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>CharlieKirkPomodoro</string>
+            <key>CFBundleDisplayName</key><string>CharlieKirkPomodoro</string>
+            <key>CFBundleIdentifier</key><string>com.syancode.charliekirkpomodoro</string>
+            <key>CFBundleExecutable</key><string>charliekirkpomodoro</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleVersion</key><string>${VERSION}</string>
+            <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+            <key>NSCameraUsageDescription</key><string>CharlieKirkPomodoro utilise la caméra pour savoir si tu regardes l'écran.</string>
+          </dict>
+          </plist>
+          PLIST
+          codesign --force --deep -s - "$APP"
+          hdiutil create -volname CharlieKirkPomodoro -srcfolder dist -ov -format UDZO CharlieKirkPomodoro-macos.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: CharlieKirkPomodoro-macos.dmg
+
+  publish:
+    needs: [windows, linux, macos]
+    # Publie ce qui a réussi, même si une plateforme échoue.
+    if: ${{ !cancelled() && contains(needs.*.result, 'success') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - run: ls -l release
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
-          files: installer/Output/CharlieKirkPomodoro-Setup.exe
+          files: release/*
+          fail_on_unmatched_files: false
           generate_release_notes: true
