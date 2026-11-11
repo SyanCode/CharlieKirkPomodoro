@@ -1,0 +1,19 @@
+[package]
+name = "charliekirkpomodoro"
+version = "1.0.0"
+edition = "2021"
+description = "Pomodoro qui flood l'écran de memes quand tu détournes le regard"
+license = "MIT"
+
+[dependencies]
+eframe = "0.37"
+nokhwa = { version = "0.10", features = ["input-native"] }
+rustface = "0.1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+directories = "6"
+open = "5"
+rand = "0.9"
+
+[profile.release]
+opt-level = 3
+lto = true
