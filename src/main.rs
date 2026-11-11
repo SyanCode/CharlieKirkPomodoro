@@ -2,9 +2,12 @@
 
 mod audio;
 mod defaults;
+mod deps;
 mod guard;
 mod memes;
+mod proc;
 mod timer;
+mod update;
 mod video;
 mod vision;
 
@@ -46,6 +49,8 @@ struct App {
     /// Ce flood-ci utilise les vidéos (sinon : musique de fond si disponible).
     video_mode: bool,
     first_run_checked: bool,
+    deps: deps::Shared,
+    update: update::Shared,
     ask_defaults: bool,
     defaults: defaults::SharedProgress,
     pomodoro: Pomodoro,
@@ -64,13 +69,15 @@ impl App {
         let now = Instant::now();
         Self {
             audio: Audio::open(),
-            ffmpeg: video::ffmpeg_available(),
+            ffmpeg: false, // renseigné par la vérification des outils (en arrière-plan)
             clips: Vec::new(),
             next_clip_id: 0,
             background: None,
             was_flooding: false,
             video_mode: true,
             first_run_checked: false,
+            deps: Default::default(),
+            update: Default::default(),
             ask_defaults: false,
             defaults: Default::default(),
             pomodoro: Pomodoro::new(25, 5),
@@ -113,6 +120,92 @@ impl App {
             if let (Some(audio), Some(path)) = (&self.audio, self.memes.background_audio()) {
                 self.background = audio.play_loop(&path);
             }
+        }
+    }
+
+    fn update_banner(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, accent: Color32, ink: Color32, soft: Color32) {
+        let state = self.update.lock().unwrap().clone();
+        match state {
+            update::State::Available(release) => {
+                egui::Frame::new()
+                    .fill(Color32::from_white_alpha(200))
+                    .corner_radius(12.0)
+                    .inner_margin(10.0)
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new(format!("Une nouvelle version est disponible : {}", release.version))
+                                .strong()
+                                .color(ink),
+                        );
+                        ui.horizontal(|ui| {
+                            let label = if cfg!(windows) { "Télécharger et installer" } else { "Ouvrir la page de téléchargement" };
+                            if ui.button(label).clicked() {
+                                update::install(ctx.clone(), self.update.clone(), release.clone());
+                            }
+                            if ui.button("Plus tard").clicked() {
+                                *self.update.lock().unwrap() = update::State::Idle;
+                            }
+                        });
+                    });
+            }
+            update::State::Downloading => {
+                ui.label(RichText::new("Téléchargement de la mise à jour…").color(accent));
+            }
+            update::State::Launched => {
+                ui.label(RichText::new("L'installateur est lancé : ferme cette fenêtre pour terminer.").color(ink));
+            }
+            update::State::Error(e) if e.contains("navigateur") => {
+                ui.label(RichText::new(e).small().color(soft));
+            }
+            _ => {}
+        }
+    }
+
+    fn tools_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, ink: Color32, soft: Color32, warn: Color32) {
+        ui.label(RichText::new("Outils").strong().color(ink));
+        match self.deps.lock().unwrap().as_ref() {
+            None => {
+                ui.label(RichText::new("Vérification en cours…").small().color(soft));
+            }
+            Some(tools) => {
+                for t in tools {
+                    let (mark, color) = if t.ok { ("OK", Color32::from_rgb(70, 130, 90)) } else { ("Problème", warn) };
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new(format!("{} : {}", t.name, mark)).small().color(color));
+                        ui.label(RichText::new(&t.detail).small().color(soft));
+                    });
+                }
+                if !deps::download_ready(tools) {
+                    ui.label(
+                        RichText::new(
+                            "Ces outils servent aux vidéos et au téléchargement des memes. \
+                             Réinstalle l'appli avec l'installateur, ou installe-les à la main.",
+                        )
+                        .small()
+                        .color(soft),
+                    );
+                }
+            }
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Vérifier les outils").clicked() {
+                deps::start(ctx.clone(), self.deps.clone());
+            }
+            if ui.button("Vérifier les mises à jour").clicked() {
+                update::check(ctx.clone(), self.update.clone());
+            }
+        });
+        match self.update.lock().unwrap().clone() {
+            update::State::Checking => {
+                ui.label(RichText::new("Recherche de mises à jour…").small().color(soft));
+            }
+            update::State::UpToDate => {
+                ui.label(RichText::new(format!("Tu as la dernière version ({}).", update::CURRENT)).small().color(soft));
+            }
+            update::State::Error(e) => {
+                ui.label(RichText::new(e).small().color(warn));
+            }
+            _ => {}
         }
     }
 
@@ -174,6 +267,9 @@ impl App {
 
     /// Mise à jour de l'état (timer, caméra, flood), sans dessin.
     fn tick(&mut self, ctx: &egui::Context) {
+        if let Some(tools) = self.deps.lock().unwrap().as_ref() {
+            self.ffmpeg = deps::video_ready(tools);
+        }
         let changed = std::mem::take(&mut self.defaults.lock().unwrap().changed);
         if changed {
             self.memes.reload();
@@ -303,6 +399,8 @@ impl eframe::App for App {
         if !self.first_run_checked {
             self.first_run_checked = true;
             ctx.set_visuals(egui::Visuals::light());
+            deps::start(ctx.clone(), self.deps.clone());
+            update::check(ctx.clone(), self.update.clone());
             self.ask_defaults = !defaults::already_installed(&self.memes.dir);
         }
 
@@ -321,6 +419,8 @@ impl eframe::App for App {
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.label(RichText::new("CharlieKirkPomodoro").size(22.0).strong().color(ink));
+                    ui.label(RichText::new(format!("version {}", update::CURRENT)).small().color(soft));
+                    self.update_banner(ui, &ctx, accent, ink, soft);
                     ui.label(RichText::new(self.pomodoro.phase.label()).size(15.0).color(accent));
                     let secs = self.pomodoro.remaining_secs();
                     ui.label(
@@ -381,9 +481,11 @@ impl eframe::App for App {
                         self.start_camera(&ctx);
                     }
 
-                    if !self.memes.videos.is_empty() && !self.ffmpeg {
+                    let tools_checked = self.deps.lock().unwrap().is_some();
+                    if tools_checked && !self.memes.videos.is_empty() && !self.ffmpeg {
                         ui.label(
-                            RichText::new("Les vidéos sont ignorées car ffmpeg est introuvable.").color(warn),
+                            RichText::new("Les vidéos sont ignorées : ffmpeg ne fonctionne pas (voir « Outils »).")
+                                .color(warn),
                         );
                     }
                     if self.audio.is_none() {
@@ -457,11 +559,14 @@ impl eframe::App for App {
                                 }
                             });
                             ui.add_space(6.0);
+                            self.tools_section(ui, &ctx, ink, soft, warn);
+                            ui.add_space(6.0);
                             ui.label(
                                 RichText::new(
                                     "Cette appli n'utilise ta caméra que pendant une session de travail, \
                                      uniquement pour savoir si un visage est devant l'écran. Aucune image n'est \
-                                     enregistrée ni envoyée.\n\n\
+                                     enregistrée ni envoyée. Au démarrage, elle demande seulement à GitHub quelle \
+                                     est la dernière version (aucune donnée personnelle n'est envoyée).\n\n\
                                      Tu peux la désinstaller à tout moment, sans rien casser :\n\
                                      • Windows : Paramètres > Applications > CharlieKirkPomodoro > Désinstaller\n\
                                        (ou Menu Démarrer > CharlieKirkPomodoro > Désinstaller)\n\

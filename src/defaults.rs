@@ -3,7 +3,8 @@
 //! remplacer ou en ajouter d'autres : un fichier déjà présent n'est jamais retéléchargé.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use crate::proc;
+use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
 const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -71,16 +72,6 @@ fn exists(dir: &Path, name: &str) -> bool {
         .any(|e| e.path().file_stem().and_then(|s| s.to_str()) == Some(stem))
 }
 
-fn tool_available(name: &str) -> bool {
-    Command::new(name)
-        .arg("--version")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
-}
-
 fn download_image(url: &str, dest: &Path) -> Result<(), String> {
     let mut resp = ureq::get(url).header("User-Agent", USER_AGENT).call().map_err(|e| e.to_string())?;
     let bytes = resp.body_mut().read_to_vec().map_err(|e| e.to_string())?;
@@ -88,18 +79,33 @@ fn download_image(url: &str, dest: &Path) -> Result<(), String> {
     std::fs::write(dest, bytes).map_err(|e| e.to_string())
 }
 
-fn yt_dlp(dir: &Path, args: &[&str], url: &str) -> Result<(), String> {
-    let status = Command::new("yt-dlp")
-        .current_dir(dir)
-        .args(["--no-playlist", "--quiet", "--no-warnings"])
+fn yt_dlp_once(dir: &Path, args: &[&str], url: &str) -> Result<(), String> {
+    let mut cmd = proc::command("yt-dlp");
+    cmd.current_dir(dir).args(["--no-playlist", "--no-warnings"]);
+    // ffmpeg est installé à côté de l'exécutable : on le montre explicitement à yt-dlp.
+    if let Some(exe_dir) = proc::exe_dir().filter(|d| d.join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" }).exists()) {
+        cmd.arg("--ffmpeg-location").arg(exe_dir);
+    }
+    let out = cmd
         .args(args)
         .arg(url)
-        .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|e| e.to_string())?;
-    status.success().then_some(()).ok_or_else(|| "yt-dlp a échoué".to_string())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| proc::explain(&e))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let reason = proc::last_line(&out.stderr);
+    Err(if reason.is_empty() { "yt-dlp a échoué".into() } else { reason })
+}
+
+/// Essaie, puis met yt-dlp à jour (YouTube change souvent) et réessaie une fois.
+fn yt_dlp(dir: &Path, args: &[&str], url: &str) -> Result<(), String> {
+    yt_dlp_once(dir, args, url).or_else(|first| {
+        let _ = proc::command("yt-dlp").arg("-U").stdout(Stdio::null()).stderr(Stdio::null()).status();
+        yt_dlp_once(dir, args, url).map_err(|second| if second == first { second } else { format!("{first} / {second}") })
+    })
 }
 
 fn fetch(asset: &Asset, dir: &Path) -> Result<(), String> {
@@ -139,7 +145,6 @@ pub fn install(dir: PathBuf, ctx: eframe::egui::Context, progress: SharedProgres
             p.changed |= changed;
             ctx.request_repaint();
         };
-        let have_yt = tool_available("yt-dlp");
         let mut failures: Vec<String> = Vec::new();
         let total = DEFAULTS.len();
         for (i, asset) in DEFAULTS.iter().enumerate() {
@@ -149,8 +154,7 @@ pub fn install(dir: PathBuf, ctx: eframe::egui::Context, progress: SharedProgres
             set(format!("Téléchargement {}/{} : {}", i + 1, total, asset.name), false);
             let result = match asset.kind {
                 Kind::Image => fetch(asset, &dir),
-                _ if have_yt => fetch(asset, &dir),
-                _ => Err("yt-dlp introuvable".into()),
+                _ => fetch(asset, &dir),
             };
             match result {
                 Ok(()) => set(format!("{} téléchargé", asset.name), true),
@@ -165,7 +169,7 @@ pub fn install(dir: PathBuf, ctx: eframe::egui::Context, progress: SharedProgres
             p.message = "Assets par défaut installés.".into();
         } else {
             p.message = format!(
-                "Échecs : {}. Les vidéos/audio nécessitent yt-dlp et ffmpeg dans le PATH.",
+                "Échecs : {}. Ouvre « Outils » pour vérifier yt-dlp et ffmpeg.",
                 failures.join(", ")
             );
         }

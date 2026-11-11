@@ -21,20 +21,9 @@ const AUDIO_RATE: u32 = 44_100;
 const MAX_AUDIO_SECS: u32 = 120;
 
 fn command(program: &str) -> Command {
-    let mut c = Command::new(program);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-    c.stdin(Stdio::null()).stderr(Stdio::null());
+    let mut c = crate::proc::command(program);
+    c.stderr(Stdio::null());
     c
-}
-
-pub fn ffmpeg_available() -> bool {
-    ["ffmpeg", "ffprobe"]
-        .iter()
-        .all(|p| command(p).arg("-version").stdout(Stdio::null()).status().is_ok_and(|s| s.success()))
 }
 
 pub struct Frame {
@@ -167,7 +156,7 @@ mod tests {
 
     #[test]
     fn plays_frames_and_decodes_sound() {
-        if !ffmpeg_available() {
+        if !crate::deps::video_ready(&crate::deps::check_all()) {
             return;
         }
         let dir = std::env::temp_dir().join(format!("ckp-test-{}", std::process::id()));

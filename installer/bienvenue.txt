@@ -10,7 +10,8 @@ Ce que fait l'installation
 Ta vie privée
   • La caméra n'est utilisée que pendant une session de travail, uniquement pour savoir si un visage est devant l'écran.
   • Aucune image n'est enregistrée ni envoyée sur Internet.
-  • Rien n'est téléchargé sans te le demander.
+  • Rien n'est téléchargé sans te le demander. Seule exception : au démarrage, l'appli demande à GitHub
+    quelle est la dernière version disponible (aucune donnée personnelle n'est envoyée).
 
 Désinstaller, c'est simple
   • Paramètres Windows > Applications > CharlieKirkPomodoro > Désinstaller,

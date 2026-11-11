@@ -45,6 +45,16 @@ sous Linux. L'installateur Windows propose de garder ou supprimer tes memes à c
 
 L'icône (`assets/icon.*`) est générée par `tools/make_icon.py` à partir d'une photo.
 
+## Mises à jour
+
+Au démarrage, l'appli demande à GitHub quelle est la dernière version (aucune donnée personnelle
+envoyée) et affiche un bandeau si une version plus récente existe. Sous Windows, « Télécharger et
+installer » récupère et lance le nouvel installateur ; ailleurs, la page de téléchargement s'ouvre.
+Le bouton « Vérifier les mises à jour » (menu « Memes, à propos et désinstallation ») le fait à la
+demande, et « Vérifier les outils » affiche l'état de yt-dlp, ffmpeg et ffprobe avec la raison d'un
+éventuel problème. Chaque push de code sur `main` publie automatiquement une nouvelle version
+(`1.0.<numéro>`) dans les Releases.
+
 ## Assets par défaut
 
 Au premier lancement, l'appli te **demande** si tu veux télécharger sur ta machine (rien n'est dans le dépôt) des assets
