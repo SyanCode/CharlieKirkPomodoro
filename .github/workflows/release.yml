@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag de la release à créer (ex. v1.0.0)"
+        required: true
+        default: "v1.0.0"
 
 permissions:
   contents: write
@@ -33,7 +38,7 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
-          $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}".TrimStart("v") } else { "0.0.0" }
+          $version = "${{ inputs.tag || github.ref_name }}".TrimStart("v")
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer/installer.iss
           Get-ChildItem installer/Output
 
@@ -43,8 +48,9 @@ jobs:
           path: installer/Output/CharlieKirkPomodoro-Setup.exe
 
       - name: Publish release
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: installer/Output/CharlieKirkPomodoro-Setup.exe
           generate_release_notes: true
