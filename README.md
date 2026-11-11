@@ -13,7 +13,8 @@ sortir du cadre compte comme « détourner le regard ». Le suivi des yeux seuls
 
 ## Compiler / lancer
 
-Il faut [Rust](https://rustup.rs) (stable).
+Il faut [Rust](https://rustup.rs) (stable). Sous Linux, installe aussi les en-têtes ALSA
+(`libasound2-dev` sur Debian/Ubuntu).
 
 ```bash
 cargo run --release
@@ -25,11 +26,19 @@ Copie-le où tu veux : c'est tout ce qu'il faut. Le workflow GitHub Actions
 
 Sous macOS, autorise l'accès caméra au premier lancement.
 
-## Memes
+## Memes, vidéos et son
 
-Sans configuration, des cartes texte générées sont utilisées. Pour de vrais memes,
-clique sur **Ouvrir le dossier des memes**, dépose-y tes images (png, jpg, gif, webp ;
-les GIF sont affichés en image fixe) et relance l'appli.
+Clique sur **Ouvrir le dossier des memes** et dépose-y tes fichiers, puis relance l'appli :
+
+| Type | Formats | Comportement |
+|---|---|---|
+| Images | png, jpg, gif, webp (GIF = image fixe) | affichées en flood |
+| Vidéos | mp4, webm, mov, mkv, avi | lues **avec leur son**, en boucle (3 vidéos simultanées max, dupliquées à l'écran) |
+| Audio de fond | mp3, wav, ogg, flac | joué en boucle pendant le flood, **seulement s'il n'y a aucune vidéo** |
+
+Les vidéos nécessitent [ffmpeg](https://ffmpeg.org/download.html) (`ffmpeg` et `ffprobe` dans le
+PATH) ; sans lui elles sont ignorées et l'appli l'indique. Sans aucun fichier, des cartes
+texte générées sont utilisées.
 
 ## Réglages
 

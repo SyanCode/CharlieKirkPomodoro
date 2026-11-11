@@ -1,19 +1,24 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod audio;
 mod guard;
 mod memes;
 mod timer;
+mod video;
 mod vision;
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, RichText, Vec2};
+use audio::Audio;
 use guard::AwayGuard;
 use memes::{Meme, Memes, CARD_TEXTS};
 use rand::Rng;
 use std::time::{Duration, Instant};
 use timer::{Phase, Pomodoro};
+use video::VideoPlayer;
 use vision::{CamStatus, Vision};
 
 const MAX_FLOOD_ITEMS: usize = 80;
+const MAX_VIDEOS: usize = 3;
 const SPAWN_EVERY: Duration = Duration::from_millis(110);
 
 struct FloodItem {
@@ -24,7 +29,19 @@ struct FloodItem {
     hue: f32,
 }
 
+struct Clip {
+    id: u64,
+    player: VideoPlayer,
+    tex: Option<egui::TextureHandle>,
+}
+
 struct App {
+    audio: Option<Audio>,
+    ffmpeg: bool,
+    clips: Vec<Clip>,
+    next_clip_id: u64,
+    background: Option<rodio::Player>,
+    was_flooding: bool,
     pomodoro: Pomodoro,
     guard: AwayGuard,
     vision: Option<Vision>,
@@ -40,6 +57,12 @@ impl App {
     fn new() -> Self {
         let now = Instant::now();
         Self {
+            audio: Audio::open(),
+            ffmpeg: video::ffmpeg_available(),
+            clips: Vec::new(),
+            next_clip_id: 0,
+            background: None,
+            was_flooding: false,
             pomodoro: Pomodoro::new(25, 5),
             guard: AwayGuard::default(),
             vision: None,
@@ -61,11 +84,47 @@ impl App {
     fn stop_flood(&mut self) {
         self.guard.reset();
         self.flood.clear();
+        self.clips.clear(); // arrête image et son des vidéos
+        self.background = None;
+        self.was_flooding = false;
+    }
+
+    fn start_flood_audio(&mut self) {
+        if let (Some(audio), Some(path)) = (&self.audio, self.memes.background_audio()) {
+            self.background = audio.play_loop(&path);
+        }
+    }
+
+    /// Renvoie l'id d'une vidéo en cours de lecture (en démarre une nouvelle si besoin).
+    fn pick_clip(&mut self, ctx: &egui::Context) -> Option<u64> {
+        if !self.ffmpeg {
+            return None;
+        }
+        let mut rng = rand::rng();
+        let want_new = self.clips.is_empty() || (self.clips.len() < MAX_VIDEOS && rng.random_bool(0.3));
+        if want_new {
+            let path = self.memes.random_video()?;
+            let mixer = self.audio.as_ref().map(Audio::mixer);
+            let id = self.next_clip_id;
+            self.next_clip_id += 1;
+            self.clips.push(Clip { id, player: VideoPlayer::start(path, mixer, ctx.clone()), tex: None });
+            return Some(id);
+        }
+        Some(self.clips[rng.random_range(0..self.clips.len())].id)
     }
 
     fn spawn_meme(&mut self, ctx: &egui::Context, screen: Vec2) {
         let mut rng = rand::rng();
-        let meme = self.memes.pick(ctx);
+        let mut rng_video = rand::rng();
+        let video = if !self.memes.videos.is_empty() && rng_video.random_bool(0.5) {
+            self.pick_clip(ctx)
+        } else {
+            None
+        };
+        let meme = match video {
+            Some(id) => Meme::Video(id),
+            None => self.memes.pick(ctx),
+        };
         let side = rng.random_range(160.0..440.0_f32);
         let aspect = match &meme {
             Meme::Image(t) => {
@@ -73,6 +132,7 @@ impl App {
                 s.x / s.y.max(1.0)
             }
             Meme::Card(_) => 4.0 / 3.0,
+            Meme::Video(_) => 16.0 / 9.0,
         };
         let size = if aspect >= 1.0 { Vec2::new(side, side / aspect) } else { Vec2::new(side * aspect, side) };
         let pos = Pos2::new(
@@ -121,16 +181,31 @@ impl App {
             }
         }
 
+        for clip in &mut self.clips {
+            if let Some(f) = clip.player.take_frame() {
+                let img = egui::ColorImage::from_rgba_unmultiplied(f.size, &f.rgba);
+                match &mut clip.tex {
+                    Some(t) => t.set(img, egui::TextureOptions::LINEAR),
+                    None => clip.tex = Some(ctx.load_texture(format!("clip{}", clip.id), img, egui::TextureOptions::LINEAR)),
+                }
+            }
+        }
+
         if watching {
-            if self.guard.update(looking, now) {
+            let flooding = self.guard.update(looking, now);
+            if flooding && !self.was_flooding {
+                self.was_flooding = true;
+                self.start_flood_audio();
+            }
+            if flooding {
                 if now - self.last_spawn >= SPAWN_EVERY {
                     self.last_spawn = now;
                     let screen = ctx.input(|i| i.viewport().monitor_size).unwrap_or(Vec2::new(1920.0, 1080.0));
                     self.spawn_meme(ctx, screen);
                     self.spawn_meme(ctx, screen);
                 }
-            } else if !self.flood.is_empty() {
-                self.flood.clear();
+            } else if self.was_flooding || !self.flood.is_empty() {
+                self.stop_flood();
             }
         } else {
             self.stop_flood();
@@ -159,6 +234,11 @@ impl App {
                                 .fit_to_exact_size(it.size)
                                 .rotate(it.angle, Vec2::splat(0.5))
                                 .paint_at(ui, rect);
+                        }
+                        Meme::Video(id) => {
+                            if let Some(tex) = self.clips.iter().find(|c| c.id == *id).and_then(|c| c.tex.as_ref()) {
+                                egui::Image::new(tex).fit_to_exact_size(it.size).paint_at(ui, rect);
+                            }
                         }
                         Meme::Card(i) => {
                             let bg: Color32 = egui::ecolor::Hsva::new(it.hue, 0.7, 0.45, 1.0).into();
@@ -256,14 +336,27 @@ impl eframe::App for App {
                         self.start_camera(&ctx);
                     }
 
+                    if !self.memes.videos.is_empty() && !self.ffmpeg {
+                        ui.label(
+                            RichText::new("Vidéos ignorées : installe ffmpeg (ffmpeg + ffprobe dans le PATH).")
+                                .color(Color32::YELLOW),
+                        );
+                    }
+                    if self.audio.is_none() {
+                        ui.label(RichText::new("Aucune sortie audio détectée.").color(Color32::YELLOW));
+                    }
                     ui.add_space(12.0);
                     if ui.button("Ouvrir le dossier des memes").clicked() {
                         self.memes.open_dir();
                     }
                     ui.label(
                         RichText::new(format!(
-                            "{} meme(s) trouvé(s) — dépose png/jpg/gif/webp dans le dossier, puis relance.",
-                            self.memes.count()
+                            "{} image(s), {} vidéo(s), {} audio — dépose-les dans le dossier, puis relance.\n\
+                             Images : png jpg gif webp · Vidéos (avec son) : mp4 webm mov mkv avi · \
+                             Audio de fond (si aucune vidéo) : mp3 wav ogg flac",
+                            self.memes.image_count(),
+                            self.memes.videos.len(),
+                            self.memes.audios.len()
                         ))
                         .small()
                         .color(Color32::from_white_alpha(200)),

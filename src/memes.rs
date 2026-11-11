@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 const MAX_SIDE: u32 = 512;
-const EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
+const IMAGE_EXT: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
+const VIDEO_EXT: [&str; 5] = ["mp4", "webm", "mov", "mkv", "avi"];
+const AUDIO_EXT: [&str; 4] = ["mp3", "wav", "ogg", "flac"];
 pub const CARD_TEXTS: [&str; 4] = [
     "CHARLIE KIRK\nTE REGARDE",
     "REVIENS\nTRAVAILLER",
@@ -20,12 +22,22 @@ pub enum Meme {
     Image(TextureHandle),
     /// Carte texte de secours (index dans `CARD_TEXTS`).
     Card(usize),
+    /// Vidéo en cours de lecture (identifiant du lecteur).
+    Video(u64),
 }
 
 pub struct Memes {
     pub dir: PathBuf,
-    files: Vec<PathBuf>,
+    images: Vec<PathBuf>,
+    pub videos: Vec<PathBuf>,
+    pub audios: Vec<PathBuf>,
     cache: HashMap<usize, Option<TextureHandle>>,
+}
+
+fn has_ext(p: &std::path::Path, list: &[&str]) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| list.contains(&e.to_ascii_lowercase().as_str()))
 }
 
 impl Memes {
@@ -34,34 +46,45 @@ impl Memes {
             .map(|d| d.data_dir().join("memes"))
             .unwrap_or_else(|| PathBuf::from("memes"));
         let _ = std::fs::create_dir_all(&dir);
-        let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| {
-                p.extension()
-                    .and_then(|e| e.to_str())
-                    .is_some_and(|e| EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
-            })
-            .collect();
-        files.sort();
-        Self { dir, files, cache: HashMap::new() }
+        let mut all: Vec<PathBuf> =
+            std::fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
+        all.sort();
+        let pick = |exts: &[&str]| all.iter().filter(|p| has_ext(p, exts)).cloned().collect::<Vec<_>>();
+        Self {
+            images: pick(&IMAGE_EXT),
+            videos: pick(&VIDEO_EXT),
+            audios: pick(&AUDIO_EXT),
+            dir,
+            cache: HashMap::new(),
+        }
     }
 
-    pub fn count(&self) -> usize {
-        self.files.len()
+    pub fn image_count(&self) -> usize {
+        self.images.len()
     }
 
     pub fn open_dir(&self) {
         let _ = open::that(&self.dir);
     }
 
-    /// Choisit un meme au hasard (décode l'image à la demande, puis la garde en cache).
+    pub fn random_video(&self) -> Option<PathBuf> {
+        self.videos.choose(&mut rand::rng()).cloned()
+    }
+
+    /// Musique de fond : uniquement s'il n'y a aucune vidéo (le son vient alors des vidéos).
+    pub fn background_audio(&self) -> Option<PathBuf> {
+        if self.videos.is_empty() {
+            self.audios.choose(&mut rand::rng()).cloned()
+        } else {
+            None
+        }
+    }
+
+    /// Choisit une image au hasard (décodée à la demande, puis en cache), sinon une carte texte.
     pub fn pick(&mut self, ctx: &Context) -> Meme {
         let mut rng = rand::rng();
-        if let Some(&i) = (0..self.files.len()).collect::<Vec<_>>().choose(&mut rng) {
-            let files = &self.files;
+        if let Some(&i) = (0..self.images.len()).collect::<Vec<_>>().choose(&mut rng) {
+            let files = &self.images;
             let tex = self.cache.entry(i).or_insert_with(|| {
                 let img = image::open(&files[i]).ok()?.thumbnail(MAX_SIDE, MAX_SIDE).to_rgba8();
                 let size = [img.width() as usize, img.height() as usize];
