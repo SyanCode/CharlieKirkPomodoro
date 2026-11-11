@@ -1,4 +1,4 @@
-; Installateur Windows (Inno Setup). Compilé par .github/workflows/release.yml
+﻿; Installateur Windows (Inno Setup). Compilé par .github/workflows/release.yml
 #ifndef AppVersion
   #define AppVersion "1.0.0"
 #endif
@@ -21,6 +21,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\charliekirkpomodoro.exe
 WizardStyle=modern
+SetupIconFile=..\assets\icon.ico
+InfoBeforeFile=bienvenue.txt
+UninstallDisplayName=CharlieKirkPomodoro
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
@@ -35,7 +38,25 @@ Source: "tools\*.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\CharlieKirkPomodoro"; Filename: "{app}\charliekirkpomodoro.exe"
+Name: "{group}\Désinstaller CharlieKirkPomodoro"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\CharlieKirkPomodoro"; Filename: "{app}\charliekirkpomodoro.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\charliekirkpomodoro.exe"; Description: "Lancer CharlieKirkPomodoro"; Flags: nowait postinstall skipifsilent
+
+[Code]
+{ À la désinstallation, propose (sans obliger) de supprimer aussi les memes et réglages. }
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    if MsgBox('L''appli a été désinstallée.' + #13#10 + #13#10 +
+              'Veux-tu aussi supprimer tes memes et réglages enregistrés ?' + #13#10 +
+              '(Tu peux répondre Non : rien d''autre ne reste sur ton ordinateur.)',
+              mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+    begin
+      DelTree(ExpandConstant('{userappdata}\SyanCode\CharlieKirkPomodoro'), True, True, True);
+      DelTree(ExpandConstant('{localappdata}\SyanCode\CharlieKirkPomodoro'), True, True, True);
+    end;
+  end;
+end;

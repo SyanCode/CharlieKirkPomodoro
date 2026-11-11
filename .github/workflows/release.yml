@@ -80,6 +80,8 @@ jobs:
           APP="dist/CharlieKirkPomodoro.app"
           mkdir -p "$APP/Contents/MacOS"
           cp target/release/charliekirkpomodoro "$APP/Contents/MacOS/"
+          mkdir -p "$APP/Contents/Resources"
+          cp assets/icon.icns "$APP/Contents/Resources/icon.icns"
           # yt-dlp embarqué à côté de l'exécutable (ffmpeg : brew install ffmpeg)
           curl -fsSL -o "$APP/Contents/MacOS/yt-dlp" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
           chmod +x "$APP/Contents/MacOS/yt-dlp"
@@ -94,6 +96,7 @@ jobs:
             <key>CFBundleIdentifier</key><string>com.syancode.charliekirkpomodoro</string>
             <key>CFBundleExecutable</key><string>charliekirkpomodoro</string>
             <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleIconFile</key><string>icon</string>
             <key>CFBundleVersion</key><string>${VERSION}</string>
             <key>CFBundleShortVersionString</key><string>${VERSION}</string>
             <key>LSMinimumSystemVersion</key><string>11.0</string>

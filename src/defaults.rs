@@ -52,6 +52,11 @@ fn marker(dir: &Path) -> PathBuf {
     dir.join(".defaults-installed")
 }
 
+/// Mémorise que la question a été traitée (acceptée ou refusée) : on ne la reposera pas.
+pub fn mark_done(dir: &Path) {
+    let _ = std::fs::write(marker(dir), "ok");
+}
+
 pub fn already_installed(dir: &Path) -> bool {
     marker(dir).exists()
 }

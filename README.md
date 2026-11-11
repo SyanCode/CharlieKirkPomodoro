@@ -35,9 +35,19 @@ Copie-le où tu veux : c'est tout ce qu'il faut. Le workflow GitHub Actions
 
 Sous macOS, autorise l'accès caméra au premier lancement.
 
+## Confidentialité et désinstallation
+
+La caméra n'est utilisée que pendant une session de travail, uniquement pour savoir si un visage
+est devant l'écran : rien n'est enregistré ni envoyé, et rien n'est téléchargé sans ton accord.
+Désinstaller est sans risque : Paramètres Windows > Applications (ou Menu Démarrer >
+Désinstaller), glisser l'appli dans la corbeille sous macOS, `sudo apt remove charliekirkpomodoro`
+sous Linux. L'installateur Windows propose de garder ou supprimer tes memes à ce moment-là.
+
+L'icône (`assets/icon.*`) est générée par `tools/make_icon.py` à partir d'une photo.
+
 ## Assets par défaut
 
-Au premier lancement, l'appli télécharge sur ta machine (rien n'est dans le dépôt) des assets
+Au premier lancement, l'appli te **demande** si tu veux télécharger sur ta machine (rien n'est dans le dépôt) des assets
 par défaut dans le dossier des memes : 5 images, 3 vidéos (phonk, funk, phonk slowed + reverb) et
 une piste audio (à partir de 0:42). La liste est dans `src/defaults.rs`. Le bouton
 **Télécharger les assets par défaut** relance le téléchargement (les fichiers déjà présents

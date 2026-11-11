@@ -46,6 +46,7 @@ struct App {
     /// Ce flood-ci utilise les vidéos (sinon : musique de fond si disponible).
     video_mode: bool,
     first_run_checked: bool,
+    ask_defaults: bool,
     defaults: defaults::SharedProgress,
     pomodoro: Pomodoro,
     guard: AwayGuard,
@@ -70,6 +71,7 @@ impl App {
             was_flooding: false,
             video_mode: true,
             first_run_checked: false,
+            ask_defaults: false,
             defaults: Default::default(),
             pomodoro: Pomodoro::new(25, 5),
             guard: AwayGuard::default(),
@@ -79,7 +81,7 @@ impl App {
             last_tick: now,
             last_spawn: now,
             preview: None,
-            status_line: String::from("Appuie sur Démarrer"),
+            status_line: String::from("Prends ton temps : appuie sur Démarrer quand tu es prêt."),
         }
     }
 
@@ -194,9 +196,9 @@ impl App {
             looking = s.looking;
             self.status_line = match &s.status {
                 CamStatus::Starting => "Démarrage de la caméra…".into(),
-                CamStatus::Running if !watching => "Caméra active (en attente)".into(),
-                CamStatus::Running if looking => "Tu regardes l'écran, continue.".into(),
-                CamStatus::Running => "Reviens devant l'écran !".into(),
+                CamStatus::Running if !watching => "Caméra prête, en attente du début de la session.".into(),
+                CamStatus::Running if looking => "Tout va bien, continue comme ça.".into(),
+                CamStatus::Running => "Reviens devant l'écran quand tu veux.".into(),
                 CamStatus::Error(e) => e.clone(),
             };
             if let Some(p) = s.preview.take() {
@@ -300,28 +302,33 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
         if !self.first_run_checked {
             self.first_run_checked = true;
-            if !defaults::already_installed(&self.memes.dir) {
-                self.install_defaults(&ctx);
-            }
+            ctx.set_visuals(egui::Visuals::light());
+            self.ask_defaults = !defaults::already_installed(&self.memes.dir);
         }
-        let bg = match self.pomodoro.phase {
-            Phase::Work => Color32::from_rgb(179, 38, 30),
-            Phase::Break => Color32::from_rgb(30, 122, 70),
+
+        // Palette douce : fond crème, corail pour le travail, vert sauge pour la pause.
+        let (bg, accent) = match self.pomodoro.phase {
+            Phase::Work => (Color32::from_rgb(250, 242, 232), Color32::from_rgb(214, 101, 84)),
+            Phase::Break => (Color32::from_rgb(235, 245, 238), Color32::from_rgb(86, 148, 112)),
         };
+        let ink = Color32::from_rgb(70, 62, 58);
+        let soft = Color32::from_rgb(120, 110, 104);
+        let warn = Color32::from_rgb(170, 105, 30);
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(bg).inner_margin(16.0))
             .show(ui, |ui| {
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("CharlieKirkPomodoro").size(22.0).strong().color(Color32::WHITE));
-                    ui.label(RichText::new(self.pomodoro.phase.label()).size(16.0).color(Color32::WHITE));
+                    ui.label(RichText::new("CharlieKirkPomodoro").size(22.0).strong().color(ink));
+                    ui.label(RichText::new(self.pomodoro.phase.label()).size(15.0).color(accent));
                     let secs = self.pomodoro.remaining_secs();
                     ui.label(
                         RichText::new(format!("{:02}:{:02}", secs / 60, secs % 60))
-                            .size(96.0)
+                            .size(88.0)
                             .strong()
                             .monospace()
-                            .color(Color32::WHITE),
+                            .color(accent),
                     );
 
                     ui.horizontal(|ui| {
@@ -344,9 +351,9 @@ impl eframe::App for App {
                     ui.add_enabled_ui(!self.pomodoro.running, |ui| {
                         ui.horizontal(|ui| {
                             ui.add_space((ui.available_width() - 330.0).max(0.0) / 2.0);
-                            ui.label(RichText::new("Travail (min)").color(Color32::WHITE));
+                            ui.label(RichText::new("Travail (min)").color(ink));
                             let a = ui.add(egui::DragValue::new(&mut self.pomodoro.work_min).range(1..=180));
-                            ui.label(RichText::new("Pause (min)").color(Color32::WHITE));
+                            ui.label(RichText::new("Pause (min)").color(ink));
                             let b = ui.add(egui::DragValue::new(&mut self.pomodoro.break_min).range(1..=60));
                             if a.changed() || b.changed() {
                                 self.pomodoro.apply_settings();
@@ -356,11 +363,16 @@ impl eframe::App for App {
 
                     ui.add_space(12.0);
                     if let Some(tex) = &self.preview {
-                        let w = ui.available_width().min(260.0);
+                        let w = ui.available_width().min(240.0);
                         let h = w * tex.size_vec2().y / tex.size_vec2().x.max(1.0);
-                        ui.add(egui::Image::new(tex).fit_to_exact_size(Vec2::new(w, h)).corner_radius(10.0));
+                        ui.add(egui::Image::new(tex).fit_to_exact_size(Vec2::new(w, h)).corner_radius(12.0));
                     }
-                    ui.label(RichText::new(&self.status_line).color(Color32::WHITE));
+                    ui.label(RichText::new(&self.status_line).color(ink));
+                    ui.label(
+                        RichText::new("Ta caméra reste sur cet ordinateur : rien n'est enregistré ni envoyé.")
+                            .small()
+                            .color(soft),
+                    );
                     if matches!(self.vision.as_ref().map(|v| v.shared.lock().unwrap().status.clone()),
                         Some(CamStatus::Error(_)))
                         && ui.button("Réessayer").clicked()
@@ -371,40 +383,96 @@ impl eframe::App for App {
 
                     if !self.memes.videos.is_empty() && !self.ffmpeg {
                         ui.label(
-                            RichText::new("Vidéos ignorées : installe ffmpeg (ffmpeg + ffprobe dans le PATH).")
-                                .color(Color32::YELLOW),
+                            RichText::new("Les vidéos sont ignorées car ffmpeg est introuvable.").color(warn),
                         );
                     }
                     if self.audio.is_none() {
-                        ui.label(RichText::new("Aucune sortie audio détectée.").color(Color32::YELLOW));
+                        ui.label(RichText::new("Aucune sortie audio détectée.").color(warn));
                     }
+
                     ui.add_space(12.0);
+                    if self.ask_defaults {
+                        egui::Frame::new()
+                            .fill(Color32::from_white_alpha(200))
+                            .corner_radius(12.0)
+                            .inner_margin(12.0)
+                            .show(ui, |ui| {
+                                ui.label(RichText::new("Ajouter quelques memes pour commencer ?").strong().color(ink));
+                                ui.label(
+                                    RichText::new(
+                                        "Je peux télécharger des images, des vidéos et un morceau audio \
+                                         (quelques dizaines de Mo). Rien n'est téléchargé sans ton accord, \
+                                         et tu peux tout supprimer quand tu veux.",
+                                    )
+                                    .small()
+                                    .color(soft),
+                                );
+                                ui.horizontal(|ui| {
+                                    if ui.button("Oui, télécharger").clicked() {
+                                        self.ask_defaults = false;
+                                        self.install_defaults(&ctx);
+                                    }
+                                    if ui.button("Non merci").clicked() {
+                                        self.ask_defaults = false;
+                                        defaults::mark_done(&self.memes.dir);
+                                    }
+                                });
+                            });
+                        ui.add_space(8.0);
+                    }
+
                     {
                         let p = self.defaults.lock().unwrap();
                         let (running, msg) = (p.running, p.message.clone());
                         drop(p);
                         if !msg.is_empty() {
-                            ui.label(RichText::new(msg).small().color(Color32::from_white_alpha(220)));
+                            ui.label(RichText::new(msg).small().color(soft));
                         }
-                        if !running && ui.button("Télécharger les assets par défaut").clicked() {
-                            self.install_defaults(&ctx);
-                        }
+                        let _ = running;
                     }
-                    if ui.button("Ouvrir le dossier des memes").clicked() {
-                        self.memes.open_dir();
-                    }
-                    ui.label(
-                        RichText::new(format!(
-                            "{} image(s), {} vidéo(s), {} audio — dépose-les dans le dossier, puis relance.\n\
-                             Images : png jpg gif webp · Vidéos (avec son) : mp4 webm mov mkv avi · \
-                             Audio de fond (si aucune vidéo) : mp3 wav ogg flac",
-                            self.memes.image_count(),
-                            self.memes.videos.len(),
-                            self.memes.audios.len()
-                        ))
-                        .small()
-                        .color(Color32::from_white_alpha(200)),
-                    );
+
+                    egui::CollapsingHeader::new(RichText::new("Memes, à propos et désinstallation").color(ink))
+                        .show(ui, |ui| {
+                            ui.label(
+                                RichText::new(format!(
+                                    "{} image(s), {} vidéo(s), {} audio dans ton dossier de memes.\n\
+                                     Images : png jpg gif webp · Vidéos (avec son) : mp4 webm mov mkv avi · \
+                                     Audio de fond : mp3 wav ogg flac.\n\
+                                     À chaque flood, soit les vidéos, soit la musique de fond.",
+                                    self.memes.image_count(),
+                                    self.memes.videos.len(),
+                                    self.memes.audios.len()
+                                ))
+                                .small()
+                                .color(soft),
+                            );
+                            ui.horizontal_wrapped(|ui| {
+                                if ui.button("Ouvrir le dossier des memes").clicked() {
+                                    self.memes.open_dir();
+                                }
+                                if !self.defaults.lock().unwrap().running
+                                    && ui.button("Télécharger les memes par défaut").clicked()
+                                {
+                                    self.install_defaults(&ctx);
+                                }
+                            });
+                            ui.add_space(6.0);
+                            ui.label(
+                                RichText::new(
+                                    "Cette appli n'utilise ta caméra que pendant une session de travail, \
+                                     uniquement pour savoir si un visage est devant l'écran. Aucune image n'est \
+                                     enregistrée ni envoyée.\n\n\
+                                     Tu peux la désinstaller à tout moment, sans rien casser :\n\
+                                     • Windows : Paramètres > Applications > CharlieKirkPomodoro > Désinstaller\n\
+                                       (ou Menu Démarrer > CharlieKirkPomodoro > Désinstaller)\n\
+                                     • macOS : glisse l'appli dans la corbeille\n\
+                                     • Linux : sudo apt remove charliekirkpomodoro",
+                                )
+                                .small()
+                                .color(soft),
+                            );
+                        });
+                });
                 });
             });
 
@@ -429,6 +497,13 @@ fn add_exe_dir_to_path() {
     if let Ok(joined) = std::env::join_paths(paths) {
         std::env::set_var("PATH", joined);
     }
+}
+
+fn window_icon() -> egui::IconData {
+    let img = image::load_from_memory(include_bytes!("../assets/icon.png"))
+        .expect("icône intégrée")
+        .to_rgba8();
+    egui::IconData { width: img.width(), height: img.height(), rgba: img.into_raw() }
 }
 
 fn log_file() -> std::path::PathBuf {
@@ -483,6 +558,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("CharlieKirkPomodoro")
+            .with_icon(window_icon())
             .with_inner_size([440.0, 720.0])
             .with_min_inner_size([380.0, 600.0]),
         ..Default::default()

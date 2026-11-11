@@ -1,0 +1,20 @@
+﻿Bienvenue !
+
+CharlieKirkPomodoro est un minuteur Pomodoro (25 minutes de travail, 5 minutes de pause, réglables). Pendant le travail, si tu détournes la tête de l'écran, des memes s'affichent jusqu'à ce que tu reviennes.
+
+Ce que fait l'installation
+  • Copie l'application, ainsi que yt-dlp et ffmpeg (utilisés uniquement pour lire les vidéos de memes), dans un seul dossier.
+  • Ajoute un raccourci dans le menu Démarrer, et sur le Bureau si tu le souhaites.
+  • Ne modifie rien d'autre sur ton ordinateur.
+
+Ta vie privée
+  • La caméra n'est utilisée que pendant une session de travail, uniquement pour savoir si un visage est devant l'écran.
+  • Aucune image n'est enregistrée ni envoyée sur Internet.
+  • Rien n'est téléchargé sans te le demander.
+
+Désinstaller, c'est simple
+  • Paramètres Windows > Applications > CharlieKirkPomodoro > Désinstaller,
+    ou Menu Démarrer > CharlieKirkPomodoro > Désinstaller.
+  • Au passage, tu pourras choisir de garder ou de supprimer tes memes.
+
+Clique sur Suivant pour continuer.

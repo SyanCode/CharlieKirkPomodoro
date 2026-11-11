@@ -16,6 +16,9 @@ ureq = "3"
 rand = "0.9"
 rodio = { version = "0.23", default-features = false, features = ["playback", "mp3", "wav", "flac", "vorbis"] }
 
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
 [profile.release]
 opt-level = 3
 lto = true
@@ -30,4 +33,5 @@ extended-description = "Pomodoro avec détection du regard par webcam : des meme
 assets = [
     ["target/release/charliekirkpomodoro", "usr/bin/", "755"],
     ["installer/charliekirkpomodoro.desktop", "usr/share/applications/", "644"],
+    ["assets/icon.png", "usr/share/icons/hicolor/256x256/apps/charliekirkpomodoro.png", "644"],
 ]
